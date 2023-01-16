@@ -70,19 +70,14 @@ func (s *Store) TransferTx(ctx context.Context, args TransferTxParams) (Transfer
 			Amount:    +args.Amount,
 		})
 
-		// decrement the from accounts balance by the amount
-		result.FromAccount, err = q.AddToAccountBalance(ctx, AddToAccountBalanceParams{
-			ID:     args.FromAccountID,
-			Amount: -args.Amount,
-		})
-		if err != nil {
-			return err
+		// always update the account with the smaller id first to avoid deadlocks
+		if args.FromAccountID < args.ToAccountID {
+			// decrement the from accounts balance by the amount
+			result.FromAccount, result.ToAccount, err = addMoney(ctx, q, args.FromAccountID, -args.Amount, args.ToAccountID, args.Amount)
+		} else {
+			// decrement the from accounts balance by the amount
+			result.ToAccount, result.FromAccount, err = addMoney(ctx, q, args.ToAccountID, args.Amount, args.FromAccountID, -args.Amount)
 		}
-
-		result.ToAccount, err = q.AddToAccountBalance(ctx, AddToAccountBalanceParams{
-			ID:     args.ToAccountID,
-			Amount: +args.Amount,
-		})
 
 		return nil
 	})
@@ -112,4 +107,30 @@ func (s *Store) execTx(ctx context.Context, fn func(*Queries) error) error {
 
 	// all operations are successful
 	return tx.Commit()
+}
+
+func addMoney(
+	ctx context.Context,
+	q *Queries,
+	accountID1 int64,
+	amount1 int64,
+	accountID2 int64,
+	amount2 int64,
+) (account1 Account, account2 Account, err error) {
+
+	account1, err = q.AddToAccountBalance(ctx, AddToAccountBalanceParams{
+		ID:     accountID1,
+		Amount: amount1,
+	})
+
+	if err != nil {
+		return account1, account2, err
+	}
+
+	account2, err = q.AddToAccountBalance(ctx, AddToAccountBalanceParams{
+		ID:     accountID2,
+		Amount: amount2,
+	})
+
+	return
 }

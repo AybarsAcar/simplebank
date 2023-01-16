@@ -13,7 +13,7 @@ func TestStore_TransferTx(t *testing.T) {
 	receiver := createRandomAccount(t)
 
 	// run n concurrent transfer transactions
-	n := 2
+	n := 10
 	amount := int64(10)
 
 	// create a channel of errors to publish to errors to the main thread from the go routine
@@ -113,4 +113,62 @@ func TestStore_TransferTx(t *testing.T) {
 
 	require.Equal(t, sender.Balance-int64(n)*amount, updatedAccount1.Balance)
 	require.Equal(t, receiver.Balance+int64(n)*amount, updatedAccount2.Balance)
+}
+
+func TestStore_TransferTx_Deadlock(t *testing.T) {
+	store := NewStore(testDB)
+
+	sender := createRandomAccount(t)
+	receiver := createRandomAccount(t)
+
+	// run n concurrent transfer transactions
+	n := 10
+	amount := int64(10)
+
+	// create a channel of errors to publish to errors to the main thread from the go routine
+	errs := make(chan error)
+
+	for i := 0; i < n; i++ {
+		fromAccountID := sender.ID
+		toAccountID := receiver.ID
+
+		// change the sender and receiver if the loop variable is odd
+		// we are trying to create a deadlock scenario here
+		if i%2 == 1 {
+			fromAccountID = receiver.ID
+			toAccountID = sender.ID
+		}
+
+		// run on a separate thread, different go routine
+		go func() {
+			_, err := store.TransferTx(context.Background(), TransferTxParams{
+				FromAccountID: fromAccountID,
+				ToAccountID:   toAccountID,
+				Amount:        amount,
+			})
+
+			// publish the values to the channel
+			errs <- err
+		}()
+	}
+
+	// check results
+	for i := 0; i < n; i++ {
+
+		// receive the errors
+		err := <-errs
+		require.NoError(t, err)
+
+	}
+
+	// check the final updated balances
+	updatedAccount1, err := testQueries.GetAccount(context.Background(), sender.ID)
+	require.NoError(t, err)
+
+	updatedAccount2, err := testQueries.GetAccount(context.Background(), receiver.ID)
+	require.NoError(t, err)
+
+	// because they are receiving and sending the same amount of money to each other
+	require.Equal(t, sender.Balance, updatedAccount1.Balance)
+	require.Equal(t, receiver.Balance, updatedAccount2.Balance)
 }
