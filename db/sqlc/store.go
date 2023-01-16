@@ -6,17 +6,24 @@ import (
 	"fmt"
 )
 
-// Store provides all functions to execute db queries and transactions
+// Store provides the signature, so we don't depend on concrete implementation
+// used in testing, list of actions that this can do
+type Store interface {
+	Querier
+	TransferTx(ctx context.Context, args TransferTxParams) (TransferTxResult, error)
+}
+
+// SQLStore provides all functions to execute db queries and transactions
 // embed queries into Store, this is like inheritance in Golang, it's called composition
-type Store struct {
+type SQLStore struct {
 	*Queries
 
 	db *sql.DB
 }
 
 // NewStore constructor
-func NewStore(db *sql.DB) *Store {
-	return &Store{
+func NewStore(db *sql.DB) Store {
+	return &SQLStore{
 		db:      db,
 		Queries: New(db),
 	}
@@ -38,7 +45,7 @@ type TransferTxResult struct {
 
 // TransferTx performs a money transfer from one account to another
 // It creates a transfer record, add new account entries, updates account balance with single database transaction
-func (s *Store) TransferTx(ctx context.Context, args TransferTxParams) (TransferTxResult, error) {
+func (s *SQLStore) TransferTx(ctx context.Context, args TransferTxParams) (TransferTxResult, error) {
 
 	var result TransferTxResult
 
@@ -86,7 +93,7 @@ func (s *Store) TransferTx(ctx context.Context, args TransferTxParams) (Transfer
 }
 
 // executes a function within a database transaction
-func (s *Store) execTx(ctx context.Context, fn func(*Queries) error) error {
+func (s *SQLStore) execTx(ctx context.Context, fn func(*Queries) error) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 
 	if err != nil {
