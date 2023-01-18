@@ -1,7 +1,10 @@
 package api
 
 import (
+	"fmt"
 	db "github.com/aybarsacar/simplebank/db/sqlc"
+	"github.com/aybarsacar/simplebank/token"
+	"github.com/aybarsacar/simplebank/util"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/validator/v10"
@@ -9,33 +12,53 @@ import (
 
 // Server serves all http requests for banking service
 type Server struct {
-	store  db.Store
-	router *gin.Engine
+	config     util.Config
+	store      db.Store
+	tokenMaker token.Maker
+	router     *gin.Engine
 }
 
 // NewServer constructor
-func NewServer(store db.Store) *Server {
-	server := Server{
-		store: store,
+func NewServer(config util.Config, store db.Store) (*Server, error) {
+
+	tokenMaker, err := token.NewPasetoMaker(config.TokenSymmetricKey)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create token maker: %w", err)
 	}
 
-	router := gin.Default()
+	server := Server{
+		config:     config,
+		store:      store,
+		tokenMaker: tokenMaker,
+	}
 
 	// register custom validators
 	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
 		v.RegisterValidation("currency", validCurrency)
 	}
 
-	// add routes
-	router.POST("/api/v1/accounts", server.createAccount)
-	router.GET("/api/v1/accounts/:id", server.getAccount)
-	router.GET("/api/v1/accounts", server.listAccounts)
+	server.setupRoutes()
 
-	router.POST("/api/v1/transfers", server.createTransfer)
+	return &server, nil
+}
+
+func (server *Server) setupRoutes() {
+	router := gin.Default()
+
+	router.POST("/api/v1/users", server.createUser)
+	router.POST("/api/v1/users/login", server.loginUser)
+
+	// create auth middleware, every request that needs to get JWT Payload and
+	// authenticate is added to this route now
+	authRoutes := router.Group("/").Use(authMiddleware(server.tokenMaker))
+
+	authRoutes.POST("/api/v1/accounts", server.createAccount)
+	authRoutes.GET("/api/v1/accounts/:id", server.getAccount)
+	authRoutes.GET("/api/v1/accounts", server.listAccounts)
+
+	authRoutes.POST("/api/v1/transfers", server.createTransfer)
 
 	server.router = router
-
-	return &server
 }
 
 // Start runs the HTTP server ona specific address
