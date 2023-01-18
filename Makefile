@@ -1,5 +1,5 @@
 postgres:
-	docker run --name my-database -p 5432:5432 -e POSTGRES_USER=root -e POSTGRES_PASSWORD=secret -d postgres
+	docker run --name my-database --network bank-network -p 5432:5432 -e POSTGRES_USER=root -e POSTGRES_PASSWORD=secret -d postgres
 
 createdb:
 	docker exec -it my-database createdb --username=root --owner=root simple_bank 
