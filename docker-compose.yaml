@@ -1,0 +1,29 @@
+version: '3.9'
+
+services:
+  bankdb:
+    image: postgres
+    environment:
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=secret
+      - POSTGRES_DB=simple_bank
+
+    container_name: bankdb
+    ports:
+      - "5433:5432"
+
+  bank.api:
+    image: ${DOCKER_REGISTRY-}bankapi
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: bank.api
+
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_SOURCE=postgresql://root:secret@bankdb:5432/simple_bank?sslmode=disable
+
+    depends_on:
+      - bankdb

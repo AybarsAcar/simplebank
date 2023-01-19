@@ -5,6 +5,9 @@ import (
 	"github.com/aybarsacar/simplebank/api"
 	db "github.com/aybarsacar/simplebank/db/sqlc"
 	"github.com/aybarsacar/simplebank/util"
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/lib/pq"
 	"log"
 )
@@ -21,6 +24,8 @@ func main() {
 		log.Fatal("Cannot connect to database", err)
 	}
 
+	runDatabaseMigration(config.MigrationURL, config.DBSource)
+
 	store := db.NewStore(conn)
 	server, err := api.NewServer(config, store)
 	if err != nil {
@@ -31,4 +36,18 @@ func main() {
 	if err != nil {
 		log.Fatal("Cannot start the server", err)
 	}
+}
+
+func runDatabaseMigration(migrationURL string, dbSource string) {
+	m, err := migrate.New(migrationURL, dbSource)
+	if err != nil {
+		log.Fatal("cannot create new migrate instance", err)
+		return
+	}
+
+	if err := m.Up(); err != nil {
+		log.Fatal("failed to run migrate up", err)
+	}
+
+	log.Println("db migration successful")
 }
